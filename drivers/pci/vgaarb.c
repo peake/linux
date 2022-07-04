@@ -35,6 +35,34 @@
 
 #include <linux/vgaarb.h>
 
+static char *bootdev __initdata;
+module_param(bootdev, charp, 0);
+MODULE_PARM_DESC(bootdev, "Force boot device to the specified PCI ID");
+
+/*
+ * Initialize to the last possible ID to have things work as normal
+ * when no 'bootdev' option is supplied. We especially do not want
+ * this to be zero (0) since that is a valid PCI ID (00:00.0).
+ */
+static u16 bootdev_id = 0xffff;
+
+static void __init parse_bootdev(char *input)
+{
+	unsigned int bus, dev, func;
+	int ret;
+
+	if (input == NULL)
+		return;
+
+	ret = sscanf(input, "%x:%x.%x", &bus, &dev, &func);
+	if (ret != 3) {
+		pr_warn("Improperly formatted PCI ID: %s\n", input);
+		return;
+	}
+
+	bootdev_id = PCI_DEVID(bus, PCI_DEVFN(dev, func));
+}
+
 static void vga_arbiter_notify_clients(void);
 /*
  * We keep a list of all vga devices in the system to speed
@@ -53,6 +81,7 @@ struct vga_device {
 	bool bridge_has_one_vga;
 	bool is_firmware_default;	/* device selected by firmware */
 	unsigned int (*set_decode)(struct pci_dev *pdev, bool decode);
+	bool is_chosen_one;		/* device specified on command line */
 };
 
 static LIST_HEAD(vga_list);
@@ -605,12 +634,21 @@ static bool vga_is_boot_device(struct vga_device *vgadev)
 
 	/*
 	 * We select the default VGA device in this order:
+	 *   User specified device (see module param bootdev=)
 	 *   Firmware framebuffer (see vga_arb_select_default_device())
 	 *   Legacy VGA device (owns VGA_RSRC_LEGACY_MASK)
 	 *   Non-legacy integrated device (see vga_arb_select_default_device())
 	 *   Non-legacy discrete device (see vga_arb_select_default_device())
 	 *   Other device (see vga_arb_select_default_device())
 	 */
+
+	if (boot_vga && boot_vga->is_chosen_one)
+		return false;
+
+	if (bootdev_id == PCI_DEVID(pdev->bus->number, pdev->devfn)) {
+		vgadev->is_chosen_one = true;
+		return true;
+	}
 
 	/*
 	 * We always prefer a firmware default device, so if we've already
@@ -1543,6 +1581,8 @@ static int __init vga_arb_device_init(void)
 {
 	int rc;
 	struct pci_dev *pdev;
+
+	parse_bootdev(bootdev);
 
 	rc = misc_register(&vga_arb_device);
 	if (rc < 0)

@@ -6518,6 +6518,13 @@
 			This is actually a boot loader parameter; the value is
 			passed to the kernel using a special protocol.
 
+	vgaarb.bootdev=	[PCI] Specify the PCI ID (e.g. 0e:00.0) of the
+			device to use as the boot VGA device, overriding
+			the heuristic used to normally determine which
+			of the eligible VGA devices to use. If the device
+			specified is not valid or not eligible, then we
+			fallback to the heuristic.
+
 	vm_debug[=options]	[KNL] Available with CONFIG_DEBUG_VM=y.
 			May slow down system boot speed, especially when
 			enabled on systems with a large amount of memory.
